@@ -1,4 +1,4 @@
-/** @global LSF */
+/** @global LSF * /
 
 /**
  * @typedef {{
@@ -28,7 +28,8 @@
  * table: TableConfig,
  * links: Dict<string|null>,
  * showPreviews: boolean,
- * projectId: number,
+ * projectId?: number,
+ * datasetId?: number,
  * interfaces: Dict<boolean>,
  * instruments: Dict<any>,
  * toolbar?: string,
@@ -45,6 +46,7 @@ import { unmountComponentAtNode } from "react-dom";
 import { toCamelCase } from "strman";
 import { instruments } from "../components/DataManager/Toolbar/instruments";
 import { APIProxy } from "../utils/api-proxy";
+import { FF_LSDV_4620_3_ML, isFF } from "../utils/feature-flags";
 import { objectToMap } from "../utils/helpers";
 import { packJSON } from "../utils/packJSON";
 import { isDefined } from "../utils/utils";
@@ -145,6 +147,8 @@ export class DataManager {
     this.root = config.root;
     this.project = config.project;
     this.projectId = config.projectId;
+    this.dataset = config.dataset;
+    this.datasetId = config.datasetId;
     this.settings = config.settings;
     this.labelStudioOptions = config.labelStudio;
     this.env = config.env ?? process.env.NODE_ENV ?? this.env;
@@ -158,7 +162,7 @@ export class DataManager {
     this.panels = config.panels;
     this.spinner = config.spinner;
     this.spinnerSize = config.spinnerSize;
-    this.instruments = prepareInstruments(config.instruments ?? {}),
+    this.instruments = prepareInstruments(config.instruments ?? {});
     this.apiTransform = config.apiTransform ?? {};
     this.preload = config.preload ?? {};
     this.interfaces = objectToMap({
@@ -187,14 +191,7 @@ export class DataManager {
 
     Object.assign(this.tabControls, config.tabControls ?? {});
 
-    if (config.actions) {
-      config.actions.forEach(([action, callback]) => {
-        if (!isDefined(action.id)) {
-          throw new Error("Every action must provide a unique ID");
-        }
-        this.actions.set(action.id, { action, callback });
-      });
-    }
+    this.updateActions(config.actions);
 
     this.type = config.type ?? "dm";
 
@@ -231,9 +228,17 @@ export class DataManager {
     config.commonHeaders = apiHeaders;
 
     Object.assign(config.endpoints, apiEndpoints ?? {});
+    const sharedParams = {};
+
+    if (!isNaN(this.projectId)) {
+      sharedParams.project = this.projectId;
+    }
+    if (!isNaN(this.datasetId)) {
+      sharedParams.dataset = this.datasetId;
+    }
     Object.assign(config, {
       sharedParams: {
-        project: this.projectId,
+        ...sharedParams,
         ...(apiSharedParams ?? {}),
       },
     });
@@ -242,7 +247,7 @@ export class DataManager {
   }
 
   /**
-   * @param {impotr("../stores/Action.js").Action} action
+   * @param {import("../stores/Action.js").Action} action
    */
   addAction(action, callback) {
     const { id } = action;
@@ -250,7 +255,10 @@ export class DataManager {
     if (!id) throw new Error("Action must provide a unique ID");
 
     this.actions.set(id, { action, callback });
-    this.store.addActions(action);
+
+    const actions = Array.from(this.actions.values()).map(({ action }) => action);
+
+    this.store?.setActions(actions);
   }
 
   removeAction(id) {
@@ -264,6 +272,17 @@ export class DataManager {
 
   installActions() {
     this.actions.forEach(({ action, callback }) => {
+      this.addAction(action, callback);
+    });
+  }
+
+  updateActions(actions) {
+    if (!Array.isArray(actions)) return;
+
+    actions.forEach(([action, callback]) => {
+      if (!isDefined(action.id)) {
+        throw new Error("Every action must provide a unique ID");
+      }
       this.addAction(action, callback);
     });
   }
@@ -440,6 +459,9 @@ export class DataManager {
   }
 
   destroy(detachCallbacks = true) {
+    if (isFF(FF_LSDV_4620_3_ML)) {
+      this.destroyLSF();
+    }
     unmountComponentAtNode(this.root);
 
     if (this.store) {
