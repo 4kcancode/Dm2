@@ -8,6 +8,10 @@ const imgDefaultProps = {};
 
 if (isFF(FF_LSDV_4711)) imgDefaultProps.crossOrigin = 'anonymous';
 
+const imgDefaultProps = {};
+
+if (isFF(FF_LSDV_4711)) imgDefaultProps.crossOrigin = 'anonymous';
+
 export const ImageCell = (column) => {
   const {
     original,
@@ -32,7 +36,6 @@ export const ImageCell = (column) => {
   return renderImagePreview ? (
     <img
       {...imgDefaultProps}
-      ref={imgRef}
       key={imgSrc}
       alt="Data"
       style={{
